@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(go:*)",
+      "Bash(npm:*)",
+      "Bash(make:*)",
+      "Bash(mkdir:*)",
+      "Bash(./slakctl --help)",
+      "Bash(./slakctl:*)",
+      "Bash(./bin/slakctl:*)",
+      "Bash(cat:*)",
+      "Bash(cp:*)",
+      "Bash(mise run test:*)"
+    ],
+    "deny": [
+      "Bash(rm -Rf:*)"
+    ]
+  }
+}
