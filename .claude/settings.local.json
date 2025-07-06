@@ -11,7 +11,8 @@
       "Bash(./bin/slakctl:*)",
       "Bash(cat:*)",
       "Bash(cp:*)",
-      "Bash(mise run test:*)"
+      "Bash(mise run test:*)",
+      "Bash(mise run:*)"
     ],
     "deny": [
       "Bash(rm -Rf:*)"

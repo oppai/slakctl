@@ -1,5 +1,7 @@
 # slakctl
 
+!! This project is under working in progress
+
 A command-line tool for managing Slack workspaces using personal tokens or OAuth2 authentication.
 
 ## Features
@@ -134,6 +136,35 @@ Search for messages across all channels:
 slakctl search "deployment"
 slakctl search "bug report"
 ```
+
+**Advanced Search Options:**
+
+Limit the number of results:
+```bash
+slakctl search "deployment" --count 50
+slakctl search "bug report" -c 10
+```
+
+Get results in JSON format:
+```bash
+slakctl search "deployment" --format json
+slakctl search "bug report" -f json
+```
+
+Use custom output format (jq-like templates):
+```bash
+slakctl search "deployment" --format "#{channel}: {user} said: {text}"
+slakctl search "bug report" -f "{timestamp} | {user} in #{channel}: {text}"
+```
+
+**Available format variables:**
+- `{channel}` - Channel name
+- `{channel_id}` - Channel ID  
+- `{user}` - Username
+- `{user_id}` - User ID
+- `{text}` - Message text
+- `{timestamp}` - Message timestamp
+- `{permalink}` - Message permalink URL
 
 ### List Channels
 
@@ -286,16 +317,23 @@ Authenticate with Slack using a personal token.
 slakctl auth token xoxb-123456789-abcdef
 ```
 
-#### `slakctl search <keyword>`
+#### `slakctl search <keyword> [flags]`
 
 Search for messages containing the specified keyword across all channels.
 
 **Arguments:**
 - `keyword` (required): The search term to look for in messages.
 
-**Example:**
+**Flags:**
+- `-c, --count int`: Number of messages to return (max 100, default 20)
+- `-f, --format string`: Output format - text, json, or custom format string (default "text")
+
+**Examples:**
 ```bash
 slakctl search "deployment failed"
+slakctl search "bug report" --count 50
+slakctl search "deployment" --format json
+slakctl search "error" -f "#{channel}: {user} - {text}"
 ```
 
 #### `slakctl channel list`

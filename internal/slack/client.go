@@ -135,11 +135,15 @@ type Message struct {
 }
 
 func (c *Client) Search(query string) (*SearchResult, error) {
+	return c.SearchWithCount(query, 20)
+}
+
+func (c *Client) SearchWithCount(query string, count int) (*SearchResult, error) {
 	params := url.Values{}
 	params.Set("query", query)
 	params.Set("sort", "timestamp")
 	params.Set("sort_dir", "desc")
-	params.Set("count", "20")
+	params.Set("count", fmt.Sprintf("%d", count))
 
 	endpoint := "search.messages?" + params.Encode()
 	body, err := c.makeRequest("GET", endpoint, nil)
