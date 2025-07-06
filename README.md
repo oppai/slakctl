@@ -1,6 +1,7 @@
 # slakctl
 
-!! This project is under working in progress
+> [!WARNING]
+> **This project is a work in progress**
 
 A command-line tool for managing Slack workspaces using personal tokens or OAuth2 authentication.
 
