@@ -97,6 +97,11 @@ type ListChannelsOptions struct {
 	ProgressFunc    func(current, total int)
 }
 
+type SearchOptions struct {
+	MaxResults   int
+	ProgressFunc func(current, total int)
+}
+
 func (c *Client) ListChannels() ([]Channel, error) {
 	return c.ListChannelsWithOptions(ListChannelsOptions{})
 }
@@ -213,37 +218,108 @@ type Message struct {
 }
 
 func (c *Client) Search(query string) (*SearchResult, error) {
-	return c.SearchWithCount(query, 20)
+	return c.SearchWithOptions(query, SearchOptions{MaxResults: 20})
 }
 
 func (c *Client) SearchWithCount(query string, count int) (*SearchResult, error) {
-	params := url.Values{}
-	params.Set("query", query)
-	params.Set("sort", "timestamp")
-	params.Set("sort_dir", "desc")
-	params.Set("count", fmt.Sprintf("%d", count))
+	return c.SearchWithOptions(query, SearchOptions{MaxResults: count})
+}
 
-	endpoint := "search.messages?" + params.Encode()
-	body, err := c.makeRequest("GET", endpoint, nil)
-	if err != nil {
-		return nil, err
+func (c *Client) SearchWithOptions(query string, options SearchOptions) (*SearchResult, error) {
+	var allMatches []Message
+	page := 1
+	maxResults := options.MaxResults
+	if maxResults <= 0 {
+		maxResults = 20 // デフォルト
 	}
 
-	var response struct {
-		OK       bool         `json:"ok"`
-		Error    string       `json:"error,omitempty"`
-		Messages SearchResult `json:"messages"`
+	for {
+		params := url.Values{}
+		params.Set("query", query)
+		params.Set("sort", "timestamp")
+		params.Set("sort_dir", "desc")
+		params.Set("page", fmt.Sprintf("%d", page))
+		params.Set("count", "100") // 1ページあたり最大100件
+
+		endpoint := "search.messages?" + params.Encode()
+		body, err := c.makeRequest("GET", endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var response struct {
+			OK       bool         `json:"ok"`
+			Error    string       `json:"error,omitempty"`
+			Messages SearchResult `json:"messages"`
+		}
+
+		if err := json.Unmarshal(body, &response); err != nil {
+			return nil, fmt.Errorf("failed to parse response: %w", err)
+		}
+
+		if !response.OK {
+			return nil, fmt.Errorf("search failed: %s", response.Error)
+		}
+
+		// 新しいマッチを追加
+		newMatches := response.Messages.Matches
+		remainingSlots := maxResults - len(allMatches)
+
+		if remainingSlots <= 0 {
+			break
+		}
+
+		if len(newMatches) > remainingSlots {
+			newMatches = newMatches[:remainingSlots]
+		}
+
+		allMatches = append(allMatches, newMatches...)
+
+		// プログレス表示
+		if options.ProgressFunc != nil {
+			options.ProgressFunc(len(allMatches), maxResults)
+		}
+
+		// 制限に達した場合
+		if len(allMatches) >= maxResults {
+			break
+		}
+
+		// 次のページがあるかチェック
+		if page >= response.Messages.Pagination.PageCount {
+			break
+		}
+
+		// ページ間のインターバル（最初のページ以外）
+		if page > 1 {
+			time.Sleep(1 * time.Second)
+		}
+
+		page++
 	}
 
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	// 結果を構築
+	result := &SearchResult{
+		Matches: allMatches,
+		Total:   len(allMatches),
+		Pagination: struct {
+			TotalCount int `json:"total_count"`
+			Page       int `json:"page"`
+			PerPage    int `json:"per_page"`
+			PageCount  int `json:"page_count"`
+			First      int `json:"first"`
+			Last       int `json:"last"`
+		}{
+			TotalCount: len(allMatches),
+			Page:       1,
+			PerPage:    len(allMatches),
+			PageCount:  1,
+			First:      1,
+			Last:       len(allMatches),
+		},
 	}
 
-	if !response.OK {
-		return nil, fmt.Errorf("search failed: %s", response.Error)
-	}
-
-	return &response.Messages, nil
+	return result, nil
 }
 
 func (c *Client) PostMessage(channel, text string) error {
