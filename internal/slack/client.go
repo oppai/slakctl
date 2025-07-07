@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 type Client struct {
@@ -81,31 +82,108 @@ func (c *Client) TestAuth() error {
 }
 
 type Channel struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	IsArchived bool   `json:"is_archived"`
+}
+
+type ResponseMetadata struct {
+	NextCursor string `json:"next_cursor"`
+}
+
+type ListChannelsOptions struct {
+	AllChannels     bool
+	IncludeArchived bool
+	ProgressFunc    func(current, total int)
 }
 
 func (c *Client) ListChannels() ([]Channel, error) {
-	body, err := c.makeRequest("GET", "conversations.list", nil)
-	if err != nil {
-		return nil, err
+	return c.ListChannelsWithOptions(ListChannelsOptions{})
+}
+
+func (c *Client) ListChannelsWithProgress(progressFunc func(current, total int)) ([]Channel, error) {
+	return c.ListChannelsWithOptions(ListChannelsOptions{
+		AllChannels:  true,
+		ProgressFunc: progressFunc,
+	})
+}
+
+func (c *Client) ListChannelsWithOptions(options ListChannelsOptions) ([]Channel, error) {
+	var allChannels []Channel
+	cursor := ""
+	pageCount := 0
+	maxChannels := 1000
+
+	if options.AllChannels {
+		maxChannels = 0 // 0は無制限を意味する
 	}
 
-	var response struct {
-		OK       bool      `json:"ok"`
-		Error    string    `json:"error,omitempty"`
-		Channels []Channel `json:"channels"`
+	for {
+		pageCount++
+		params := url.Values{}
+		if cursor != "" {
+			params.Set("cursor", cursor)
+		}
+		// 最大1000件ずつ取得
+		params.Set("limit", "1000")
+
+		// アーカイブされたチャンネルを除外（APIレベルでフィルタリング）
+		if !options.IncludeArchived {
+			params.Set("exclude_archived", "true")
+		}
+
+		endpoint := "conversations.list"
+		if len(params) > 0 {
+			endpoint += "?" + params.Encode()
+		}
+
+		body, err := c.makeRequest("GET", endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var response struct {
+			OK               bool             `json:"ok"`
+			Error            string           `json:"error,omitempty"`
+			Channels         []Channel        `json:"channels"`
+			ResponseMetadata ResponseMetadata `json:"response_metadata"`
+		}
+
+		if err := json.Unmarshal(body, &response); err != nil {
+			return nil, fmt.Errorf("failed to parse response: %w", err)
+		}
+
+		if !response.OK {
+			return nil, fmt.Errorf("failed to list channels: %s", response.Error)
+		}
+
+		allChannels = append(allChannels, response.Channels...)
+
+		// プログレス表示
+		if options.ProgressFunc != nil {
+			options.ProgressFunc(len(allChannels), maxChannels)
+		}
+
+		// 1000件制限に達した場合
+		if maxChannels > 0 && len(allChannels) >= maxChannels {
+			allChannels = allChannels[:maxChannels]
+			break
+		}
+
+		// 次のページがあるかチェック
+		if response.ResponseMetadata.NextCursor == "" {
+			break
+		}
+
+		// 1000件取得ごとに3秒のインターバル（最初のページ以外）
+		if pageCount > 1 && options.AllChannels {
+			time.Sleep(3 * time.Second)
+		}
+
+		cursor = response.ResponseMetadata.NextCursor
 	}
 
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	if !response.OK {
-		return nil, fmt.Errorf("failed to list channels: %s", response.Error)
-	}
-
-	return response.Channels, nil
+	return allChannels, nil
 }
 
 type SearchResult struct {
@@ -122,11 +200,11 @@ type SearchResult struct {
 }
 
 type Message struct {
-	Type      string `json:"type"`
-	Text      string `json:"text"`
-	User      string `json:"user"`
-	Username  string `json:"username"`
-	Channel   struct {
+	Type     string `json:"type"`
+	Text     string `json:"text"`
+	User     string `json:"user"`
+	Username string `json:"username"`
+	Channel  struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"channel"`

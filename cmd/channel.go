@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"slakctl/internal/config"
 	"slakctl/internal/slack"
@@ -15,10 +16,16 @@ var channelCmd = &cobra.Command{
 	Long:  "Commands for managing and listing channels in your Slack workspace.",
 }
 
+var (
+	showProgress    bool
+	allChannels     bool
+	includeArchived bool
+)
+
 var channelListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all channels",
-	Long:  "List all channels in the workspace that the authenticated user has access to.",
+	Short: "List channels",
+	Long:  "List channels in the workspace that the authenticated user has access to.\n\nBy default, this command fetches up to 1000 channels and excludes archived channels. Use --all to fetch all channels and --archived to include archived channels.",
 	RunE:  runChannelList,
 }
 
@@ -33,10 +40,39 @@ func runChannelList(cmd *cobra.Command, args []string) error {
 	}
 
 	client := slack.NewClient(cfg.Token)
-	
-	channels, err := client.ListChannels()
-	if err != nil {
-		return fmt.Errorf("failed to list channels: %w", err)
+
+	var channels []slack.Channel
+	var err2 error
+
+	options := slack.ListChannelsOptions{
+		AllChannels:     allChannels,
+		IncludeArchived: includeArchived,
+	}
+
+	if showProgress {
+		fmt.Println("Fetching channels...")
+		startTime := time.Now()
+
+		options.ProgressFunc = func(current, total int) {
+			elapsed := time.Since(startTime)
+			if total > 0 {
+				fmt.Printf("\rFetched %d/%d channels (elapsed: %v)", current, total, elapsed.Round(time.Millisecond))
+			} else {
+				fmt.Printf("\rFetched %d channels (elapsed: %v)", current, elapsed.Round(time.Millisecond))
+			}
+		}
+
+		channels, err2 = client.ListChannelsWithOptions(options)
+
+		if err2 == nil {
+			fmt.Println() // 改行
+		}
+	} else {
+		channels, err2 = client.ListChannelsWithOptions(options)
+	}
+
+	if err2 != nil {
+		return fmt.Errorf("failed to list channels: %w", err2)
 	}
 
 	if len(channels) == 0 {
@@ -45,10 +81,13 @@ func runChannelList(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Found %d channels:\n\n", len(channels))
-	
+
 	for _, channel := range channels {
 		fmt.Printf("ID: %s\n", channel.ID)
 		fmt.Printf("Name: #%s\n", channel.Name)
+		if channel.IsArchived {
+			fmt.Printf("Status: Archived\n")
+		}
 		fmt.Println("---")
 	}
 
@@ -56,5 +95,8 @@ func runChannelList(cmd *cobra.Command, args []string) error {
 }
 
 func init() {
+	channelListCmd.Flags().BoolVarP(&showProgress, "progress", "p", true, "Show progress during channel listing")
+	channelListCmd.Flags().BoolVarP(&allChannels, "all", "a", false, "Fetch all channels (default: limit to 1000)")
+	channelListCmd.Flags().BoolVarP(&includeArchived, "archived", "", false, "Include archived channels")
 	channelCmd.AddCommand(channelListCmd)
 }
