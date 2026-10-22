@@ -1,8 +1,8 @@
 [env]
-GO_VERSION = "1.24.3"
+GO_VERSION = "1.27.3"
 
 [tools]
-go = "1.24.3"
+go = "1.27.3"
 
 [tasks.build]
 description = "Build the slakctl binary"
