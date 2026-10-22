@@ -16,7 +16,7 @@ A command-line tool for managing Slack workspaces using personal tokens or OAuth
 
 ### Prerequisites
 
-- Go 1.24.3 or later
+- Go 1.27.3 or later
 - [mise](https://github.com/jdx/mise) for task running
 
 ### Build from Source
